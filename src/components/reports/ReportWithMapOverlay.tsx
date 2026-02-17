@@ -16,9 +16,9 @@ import { ArcGISMapWrapper } from "@/components/maps/ArcGISMapWrapper";
 type ReportWithMapOverlayProps = ReportEmbedProps & {
   /** Show the ArcGIS map overlay */
   showMapOverlay?: boolean;
-  /** Position from top of Power BI report (e.g., "200px" or "30%") */
+  /** Position from top/bottom of Power BI report. Use "auto" for bottom alignment (default), or specify value like "200px" for top positioning */
   mapTop?: string;
-  /** Position from left of Power BI report (e.g., "50px" or "10%") */
+  /** Position from left/right of Power BI report. Use "auto" for right alignment (default), or specify value like "50px" for left positioning */
   mapLeft?: string;
   /** Width of the map overlay (e.g., "400px" or "40%") */
   mapWidth?: string;
@@ -30,25 +30,27 @@ type ReportWithMapOverlayProps = ReportEmbedProps & {
 
 export function ReportWithMapOverlay({
   showMapOverlay = true,
-  mapTop = "200px",
-  mapLeft = "50%",
+  mapTop = "auto",
+  mapLeft = "auto",
   mapWidth = "45%",
   mapHeight = "400px",
   mapZIndex = 10,
   ...reportProps
 }: ReportWithMapOverlayProps) {
   return (
-    <div className="relative w-full">
+    <div className="relative w-full min-h-screen">
       {/* Power BI Report */}
       <ReportEmbed {...reportProps} />
 
-      {/* ArcGIS Map Overlay */}
+      {/* ArcGIS Map Overlay - Aligned to right and bottom */}
       {showMapOverlay && (
         <div
           className="absolute pointer-events-auto"
           style={{
-            top: mapTop,
-            left: mapLeft,
+            bottom: mapTop === "auto" ? "20px" : undefined,
+            top: mapTop !== "auto" ? mapTop : undefined,
+            right: mapLeft === "auto" ? "20px" : undefined,
+            left: mapLeft !== "auto" ? mapLeft : undefined,
             width: mapWidth,
             height: mapHeight,
             zIndex: mapZIndex,
