@@ -24,7 +24,7 @@ export default function ReportsPage() {
         </h2>
         <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
           This map displays the same geographic data from your Power BI report.
-          Sign in to ArcGIS when prompted.
+          When configured with an ArcGIS API key, no sign-in is required.
         </p>
         <ArcGISMapWrapper height="600px" />
       </section>

@@ -1,20 +1,21 @@
 "use client";
 
 /**
- * ArcGIS Map Component with OAuth 2.0 Authentication
+ * ArcGIS Map Component — supports two auth modes (app owns data vs user sign-in).
  *
- * This replaces the unsupported "ArcGIS for Power BI" embedded visual.
- * It loads the same Web Map directly from ArcGIS Online using OAuth 2.0.
+ * Preferred: API Key (no sign-in for viewers)
+ *   Set NEXT_PUBLIC_ARCGIS_API_KEY. The app loads the Web Map with that key;
+ *   viewers do NOT need ArcGIS accounts or to sign in. Same idea as Power BI "app owns data".
  *
- * How it works:
- * 1. User opens the page → OAuth popup redirects to ArcGIS login
- * 2. ArcGIS returns a token
- * 3. Token loads the Web Map + all its layers
- * 4. Token auto-refreshes (managed by ArcGIS IdentityManager)
+ * Fallback: OAuth 2.0 (each viewer must sign in)
+ *   Set NEXT_PUBLIC_ARCGIS_CLIENT_ID (and optionally remove API key). Each user
+ *   is prompted to sign in to ArcGIS; requires ArcGIS account.
  *
- * Required env vars:
- *   NEXT_PUBLIC_ARCGIS_CLIENT_ID  — from developers.arcgis.com OAuth 2.0 credentials
- *   NEXT_PUBLIC_ARCGIS_WEBMAP_ID  — the portal item ID of your Web Map
+ * Required: NEXT_PUBLIC_ARCGIS_WEBMAP_ID — your Web Map item ID from ArcGIS Online.
+ *
+ * References:
+ *   - API keys: https://developers.arcgis.com/documentation/security-and-authentication/api-keys/
+ *   - OAuth:   https://developers.arcgis.com/documentation/security-and-authentication/
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -35,6 +36,8 @@ type ArcGISMapProps = {
     webMapId?: string;
     /** Override the OAuth Client ID (defaults to NEXT_PUBLIC_ARCGIS_CLIENT_ID) */
     clientId?: string;
+    /** Override the API key (defaults to NEXT_PUBLIC_ARCGIS_API_KEY) */
+    apiKey?: string;
     /** CSS class name for the container */
     className?: string;
     /** Height of the map container (default: 500px) */
@@ -44,6 +47,7 @@ type ArcGISMapProps = {
 export function ArcGISMap({
     webMapId,
     clientId,
+    apiKey: apiKeyProp,
     className = "",
     height = "500px",
 }: ArcGISMapProps) {
@@ -54,7 +58,10 @@ export function ArcGISMap({
     >("loading");
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [userName, setUserName] = useState<string | null>(null);
+    const [authMode, setAuthMode] = useState<"apiKey" | "oauth">("apiKey");
 
+    const resolvedApiKey =
+        apiKeyProp || process.env.NEXT_PUBLIC_ARCGIS_API_KEY || "";
     const resolvedClientId =
         clientId || process.env.NEXT_PUBLIC_ARCGIS_CLIENT_ID || "";
     const resolvedWebMapId =
@@ -62,15 +69,6 @@ export function ArcGISMap({
 
     useEffect(() => {
         if (!mapRef.current) return;
-
-        // Validate configuration
-        if (!resolvedClientId || resolvedClientId === "YOUR_CLIENT_ID_HERE") {
-            setStatus("error");
-            setErrorMessage(
-                "ArcGIS Client ID not configured. Set NEXT_PUBLIC_ARCGIS_CLIENT_ID in your .env file."
-            );
-            return;
-        }
 
         if (!resolvedWebMapId || resolvedWebMapId === "YOUR_WEBMAP_ID_HERE") {
             setStatus("error");
@@ -80,93 +78,106 @@ export function ArcGISMap({
             return;
         }
 
-        // Set up ArcGIS configuration
-        // Use the API key if available as a fallback
-        const apiKey = process.env.NEXT_PUBLIC_ARCGIS_API_KEY;
-        if (apiKey) {
-            esriConfig.apiKey = apiKey;
+        const useApiKey =
+            !!resolvedApiKey && resolvedApiKey !== "YOUR_API_KEY_HERE";
+
+        if (!useApiKey) {
+            if (
+                !resolvedClientId ||
+                resolvedClientId === "YOUR_CLIENT_ID_HERE"
+            ) {
+                setStatus("error");
+                setErrorMessage(
+                    "Configure ArcGIS: set NEXT_PUBLIC_ARCGIS_API_KEY (recommended, no sign-in) or NEXT_PUBLIC_ARCGIS_CLIENT_ID (OAuth sign-in) in your .env file."
+                );
+                return;
+            }
+        }
+
+        if (useApiKey) {
+            esriConfig.apiKey = resolvedApiKey;
+            setAuthMode("apiKey");
+        } else {
+            setAuthMode("oauth");
         }
 
         let cancelled = false;
 
+        async function loadMapWithApiKey(): Promise<void> {
+            const webmap = new WebMap({
+                portalItem: { id: resolvedWebMapId },
+            });
+            const view = new MapView({
+                container: mapRef.current!,
+                map: webmap,
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+            });
+            viewRef.current = view;
+            await view.when();
+            if (cancelled) {
+                view.destroy();
+                return;
+            }
+            setStatus("ready");
+            console.log("[ArcGIS] Map loaded with API key (no sign-in required)");
+        }
+
+        async function loadMapWithOAuth(): Promise<void> {
+            const oAuthInfo = new OAuthInfo({
+                appId: resolvedClientId,
+                popup: true,
+                popupCallbackUrl: `${window.location.origin}/oauth-callback.html`,
+            });
+            IdentityManager.registerOAuthInfos([oAuthInfo]);
+
+            let _credential;
+            try {
+                _credential = await IdentityManager.checkSignInStatus(
+                    oAuthInfo.portalUrl + "/sharing"
+                );
+            } catch {
+                _credential = await IdentityManager.getCredential(
+                    oAuthInfo.portalUrl + "/sharing"
+                );
+            }
+
+            if (cancelled) return;
+
+            const portal = new Portal();
+            portal.authMode = "immediate";
+            await portal.load();
+            if (portal.user) {
+                setUserName(portal.user.fullName || portal.user.username);
+            }
+            if (cancelled) return;
+
+            const webmap = new WebMap({
+                portalItem: { id: resolvedWebMapId },
+            });
+            const view = new MapView({
+                container: mapRef.current!,
+                map: webmap,
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+            });
+            viewRef.current = view;
+            await view.when();
+            if (cancelled) {
+                view.destroy();
+                return;
+            }
+            setStatus("ready");
+            console.log("[ArcGIS] Map loaded with OAuth");
+        }
+
         async function initMap() {
             try {
-                setStatus("authenticating");
+                if (!useApiKey) setStatus("authenticating");
 
-                // ========================================
-                // Step 1: Register OAuth 2.0 credentials
-                // ========================================
-                const oAuthInfo = new OAuthInfo({
-                    appId: resolvedClientId,
-                    popup: true, // Opens a popup for ArcGIS login
-                    popupCallbackUrl: `${window.location.origin}/oauth-callback.html`,
-                    // portalUrl defaults to "https://www.arcgis.com"
-                });
-
-                IdentityManager.registerOAuthInfos([oAuthInfo]);
-
-                // ========================================
-                // Step 2: Check if user is already signed in
-                //         or prompt for sign-in
-                // ========================================
-                let _credential;
-                try {
-                    // Try to get existing credentials (already logged in)
-                    _credential = await IdentityManager.checkSignInStatus(
-                        oAuthInfo.portalUrl + "/sharing"
-                    );
-                } catch {
-                    // Not signed in yet — this will open the OAuth popup
-                    _credential = await IdentityManager.getCredential(
-                        oAuthInfo.portalUrl + "/sharing"
-                    );
+                if (useApiKey) {
+                    await loadMapWithApiKey();
+                } else {
+                    await loadMapWithOAuth();
                 }
-
-                if (cancelled) return;
-
-                // ========================================
-                // Step 3: Get user info from the portal
-                // ========================================
-                const portal = new Portal();
-                portal.authMode = "immediate";
-                await portal.load();
-
-                if (portal.user) {
-                    setUserName(portal.user.fullName || portal.user.username);
-                }
-
-                if (cancelled) return;
-
-                // ========================================
-                // Step 4: Load the Web Map
-                // ========================================
-                const webmap = new WebMap({
-                    portalItem: {
-                        id: resolvedWebMapId,
-                    },
-                });
-
-                // ========================================
-                // Step 5: Create the MapView
-                // ========================================
-                const view = new MapView({
-                    container: mapRef.current!,
-                    map: webmap,
-                    padding: { top: 0, right: 0, bottom: 0, left: 0 },
-                });
-
-                viewRef.current = view;
-
-                // Wait for the view to finish loading
-                await view.when();
-
-                if (cancelled) {
-                    view.destroy();
-                    return;
-                }
-
-                setStatus("ready");
-                console.log("[ArcGIS] Map loaded successfully");
             } catch (err: unknown) {
                 if (cancelled) return;
 
@@ -174,9 +185,16 @@ export function ArcGISMap({
                 setStatus("error");
 
                 const message =
-                  err instanceof Error ? err.message : String(err);
-                // Provide user-friendly error messages
-                if (message.includes("User denied")) {
+                    err instanceof Error ? err.message : String(err);
+
+                if (
+                    message.includes("user-aborted") ||
+                    message.includes("ABORTED")
+                ) {
+                    setErrorMessage(
+                        "Sign-in was cancelled. Click Retry to sign in again, or ask your admin to use an ArcGIS API key so viewers don’t need to sign in."
+                    );
+                } else if (message.includes("User denied")) {
                     setErrorMessage(
                         "ArcGIS sign-in was cancelled. Please refresh and sign in to view the map."
                     );
@@ -188,9 +206,17 @@ export function ArcGISMap({
                     setErrorMessage(
                         "Web Map not found. Please check NEXT_PUBLIC_ARCGIS_WEBMAP_ID in your .env file."
                     );
+                } else if (
+                    message.includes("Invalid API key") ||
+                    message.includes("API key")
+                ) {
+                    setErrorMessage(
+                        "Invalid ArcGIS API key. Check NEXT_PUBLIC_ARCGIS_API_KEY or use OAuth (NEXT_PUBLIC_ARCGIS_CLIENT_ID) instead."
+                    );
                 } else {
                     setErrorMessage(
-                        message || "Failed to load ArcGIS map. Check the console for details."
+                        message ||
+                            "Failed to load ArcGIS map. Check the console for details."
                     );
                 }
             }
@@ -205,12 +231,12 @@ export function ArcGISMap({
                 viewRef.current = null;
             }
         };
-    }, [resolvedClientId, resolvedWebMapId]);
+    }, [resolvedApiKey, resolvedClientId, resolvedWebMapId]);
 
     return (
         <div className={`arcgis-map-container ${className}`}>
-            {/* Status Bar */}
-            {status === "authenticating" && (
+            {/* Status Bar: only show "sign in" / "signed in" when using OAuth */}
+            {status === "authenticating" && authMode === "oauth" && (
                 <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-t-lg text-blue-700 text-sm">
                     <svg
                         className="animate-spin h-4 w-4"
@@ -235,7 +261,7 @@ export function ArcGISMap({
                 </div>
             )}
 
-            {status === "ready" && userName && (
+            {status === "ready" && authMode === "oauth" && userName && (
                 <div className="flex items-center justify-between px-4 py-2 bg-green-50 border border-green-200 rounded-t-lg text-green-700 text-sm">
                     <span>
                         ✅ Connected to ArcGIS as <strong>{userName}</strong>
