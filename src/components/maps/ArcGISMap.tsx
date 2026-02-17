@@ -109,15 +109,15 @@ export function ArcGISMap({
                 // Step 2: Check if user is already signed in
                 //         or prompt for sign-in
                 // ========================================
-                let credential;
+                let _credential;
                 try {
                     // Try to get existing credentials (already logged in)
-                    credential = await IdentityManager.checkSignInStatus(
+                    _credential = await IdentityManager.checkSignInStatus(
                         oAuthInfo.portalUrl + "/sharing"
                     );
                 } catch {
                     // Not signed in yet — this will open the OAuth popup
-                    credential = await IdentityManager.getCredential(
+                    _credential = await IdentityManager.getCredential(
                         oAuthInfo.portalUrl + "/sharing"
                     );
                 }
@@ -167,28 +167,30 @@ export function ArcGISMap({
 
                 setStatus("ready");
                 console.log("[ArcGIS] Map loaded successfully");
-            } catch (err: any) {
+            } catch (err: unknown) {
                 if (cancelled) return;
 
                 console.error("[ArcGIS] Error initializing map:", err);
                 setStatus("error");
 
+                const message =
+                  err instanceof Error ? err.message : String(err);
                 // Provide user-friendly error messages
-                if (err?.message?.includes("User denied")) {
+                if (message.includes("User denied")) {
                     setErrorMessage(
                         "ArcGIS sign-in was cancelled. Please refresh and sign in to view the map."
                     );
-                } else if (err?.message?.includes("Invalid client_id")) {
+                } else if (message.includes("Invalid client_id")) {
                     setErrorMessage(
                         "Invalid ArcGIS Client ID. Please check NEXT_PUBLIC_ARCGIS_CLIENT_ID in your .env file."
                     );
-                } else if (err?.message?.includes("Item does not exist")) {
+                } else if (message.includes("Item does not exist")) {
                     setErrorMessage(
                         "Web Map not found. Please check NEXT_PUBLIC_ARCGIS_WEBMAP_ID in your .env file."
                     );
                 } else {
                     setErrorMessage(
-                        err?.message || "Failed to load ArcGIS map. Check the console for details."
+                        message || "Failed to load ArcGIS map. Check the console for details."
                     );
                 }
             }
