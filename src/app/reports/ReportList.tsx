@@ -80,13 +80,12 @@ export function ReportList() {
           reportId={selected.reportId}
           workspaceId={selected.workspaceId}
           showMapOverlay={true}
-          // Map is positioned at bottom-right of the Power BI report
-          // Use "auto" for right/bottom alignment, or specify exact values for custom positioning
-          mapTop="auto"       // "auto" = align to bottom with 20px margin
-          mapLeft="auto"      // "auto" = align to right with 20px margin
-          mapWidth="45%"      // Width of the map overlay
-          mapHeight="500px"   // Height of the map overlay
-          mapZIndex={10}      // Ensure map appears above the Power BI iframe
+          mapTopPct={25}       // Top position as % of report height
+          mapLeftPct={55}      // Left position as % of report width
+          mapWidthPct={43}     // Width as % of report width
+          mapHeightPct={65}    // Height as % of report height
+          mapZIndex={10}
+          enableCalibration    // Remove this once you've found the right position
         />
       )}
     </div>
