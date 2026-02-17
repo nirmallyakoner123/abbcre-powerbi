@@ -1,6 +1,6 @@
 "use client";
 
-import { ReportEmbed } from "@/components/reports/ReportEmbed";
+import { ReportWithMapOverlay } from "@/components/reports/ReportWithMapOverlay";
 import { site } from "@/config/site";
 import { useEffect, useState } from "react";
 
@@ -76,9 +76,16 @@ export function ReportList() {
         ))}
       </div>
       {selected && (
-        <ReportEmbed
+        <ReportWithMapOverlay
           reportId={selected.reportId}
           workspaceId={selected.workspaceId}
+          showMapOverlay={true}
+          // Adjust these values to position the map exactly where it appears in your Power BI report
+          mapTop="200px"      // Distance from top of the report
+          mapLeft="50%"       // Distance from left (50% centers it horizontally)
+          mapWidth="45%"      // Width of the map overlay
+          mapHeight="400px"   // Height of the map overlay
+          mapZIndex={10}      // Ensure map appears above the Power BI iframe
         />
       )}
     </div>

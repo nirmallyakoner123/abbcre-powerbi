@@ -22,18 +22,6 @@ export default function ReportsPage() {
           permissions (user-to-report mapping).
         </p>
         <ReportList />
-
-        {/* ArcGIS Map — syncs filters with the Power BI report above */}
-        <section className="mt-8">
-          <h2 className="text-xl font-semibold text-foreground mb-2">
-            ArcGIS Map
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
-            Click a data point in the report to filter the map, or click a
-            feature on the map to filter the report.
-          </p>
-          <ArcGISMapWrapper height="600px" />
-        </section>
       </main>
     </FilterSyncProvider>
   );
